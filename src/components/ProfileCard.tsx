@@ -1,11 +1,12 @@
 import { motion } from 'framer-motion';
-import { User, MapPin, Award, Clock, CheckCircle2, Edit2 } from 'lucide-react';
+import { User, MapPin, Award, Clock, CheckCircle2, Edit2, Star } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/useAuth';
+import { useAverageRating } from '@/hooks/useAverageRating';
 import { SKILL_OPTIONS } from '@/types/database';
 
 const BADGE_INFO: Record<string, { icon: string; label: string; description: string }> = {
@@ -23,6 +24,7 @@ interface ProfileCardProps {
 
 export function ProfileCard({ onEditProfile }: ProfileCardProps) {
   const { profile, user } = useAuth();
+  const { average, count } = useAverageRating(user?.id);
 
   if (!profile || !user) return null;
 
@@ -67,8 +69,8 @@ export function ProfileCard({ onEditProfile }: ProfileCardProps) {
             )}
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+           {/* Stats */}
+          <div className="grid grid-cols-4 gap-3 mb-6">
             <div className="text-center p-3 rounded-lg bg-muted/50">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary mx-auto mb-2">
                 <CheckCircle2 className="w-4 h-4" />
@@ -89,6 +91,17 @@ export function ProfileCard({ onEditProfile }: ProfileCardProps) {
               </div>
               <p className="text-2xl font-bold">{profile.badges?.length || 0}</p>
               <p className="text-xs text-muted-foreground">Badges</p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-warning/10 text-warning mx-auto mb-2">
+                <Star className="w-4 h-4" />
+              </div>
+              <p className="text-2xl font-bold">
+                {average > 0 ? average.toFixed(1) : '—'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {count > 0 ? `${count} ratings` : 'No ratings'}
+              </p>
             </div>
           </div>
 

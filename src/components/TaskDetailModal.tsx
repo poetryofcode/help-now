@@ -15,6 +15,7 @@ import { Task, TIME_LABELS, URGENCY_LABELS } from '@/types/database';
 import { useTaskVolunteers, VolunteerWithProfile } from '@/hooks/useTaskVolunteers';
 import { useTasks } from '@/hooks/useTasks';
 import { useAuth } from '@/hooks/useAuth';
+import { useAverageRating } from '@/hooks/useAverageRating';
 import { useToast } from '@/hooks/use-toast';
 import { TaskChat } from './TaskChat';
 import { FeedbackModal } from './FeedbackModal';
@@ -323,6 +324,7 @@ interface VolunteerCardProps {
 }
 
 function VolunteerCard({ volunteer, onAccept, onReject }: VolunteerCardProps) {
+  const { average } = useAverageRating(volunteer.volunteer_id);
   const statusStyles = {
     pending: 'border-warning/30 bg-warning/5',
     accepted: 'border-success/30 bg-success/5',
@@ -349,9 +351,17 @@ function VolunteerCard({ volunteer, onAccept, onReject }: VolunteerCardProps) {
         <p className="font-medium text-sm truncate">
           {volunteer.profile?.full_name || 'Anonymous'}
         </p>
-        <p className="text-xs text-muted-foreground">
-          {volunteer.profile?.tasks_completed || 0} tasks completed
-        </p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-xs text-muted-foreground">
+            {volunteer.profile?.tasks_completed || 0} tasks
+          </p>
+          {average > 0 && (
+            <div className="flex items-center gap-0.5">
+              <Star className="w-3 h-3 fill-warning text-warning" />
+              <span className="text-xs text-muted-foreground">{average.toFixed(1)}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {volunteer.status === 'pending' && (
