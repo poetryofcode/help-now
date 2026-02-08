@@ -24,6 +24,10 @@ interface ProcessedTask {
   description: string;
   urgency: TaskUrgency;
   time_needed: TimeNeeded;
+  location?: string | null;
+  location_name?: string;
+  location_lat?: number;
+  location_lng?: number;
 }
 
 interface LocationData {
@@ -166,6 +170,16 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
       console.log('Processed task:', taskData);
       
       setProcessedTask(taskData as ProcessedTask);
+      
+      // If AI extracted and geocoded a location, pre-fill it
+      if (taskData.location_lat && taskData.location_lng && taskData.location_name) {
+        setLocation({
+          name: taskData.location_name,
+          lat: taskData.location_lat,
+          lng: taskData.location_lng,
+        });
+      }
+      
       setStep('review');
       
     } catch (error) {
