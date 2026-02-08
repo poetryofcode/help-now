@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import L, { Icon, DivIcon, LatLngBounds, Map as LeafletMap } from 'leaflet';
 import { motion } from 'framer-motion';
-import { MapPin, Clock, Users, Zap, Navigation, Minus, Plus } from 'lucide-react';
+import { MapPin, Clock, Users, Zap, Navigation, Minus, Plus, Loader2, AlertCircle } from 'lucide-react';
 import { Task, TIME_LABELS, URGENCY_LABELS } from '@/types/database';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -72,23 +73,119 @@ const userLocationIcon = new DivIcon({
 
 export function TaskMapView({ onViewTask }: TaskMapViewProps) {
   const { tasks, loading, acceptTask } = useTasks();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const { toast } = useToast();
   
   const mapRef = useRef<LeafletMap | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+  const geoLocationAttemptedRef = useRef(false);
   
   const [radiusFilter, setRadiusFilter] = useState<number>(25);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showRadius, setShowRadius] = useState(true);
   const [mapReady, setMapReady] = useState(false);
+  const [geolocating, setGeolocating] = useState(true);
+  const [geoError, setGeoError] = useState<string | null>(null);
   
   const userLocation: [number, number] = useMemo(() => {
     if (profile?.location_lat && profile?.location_lng) {
       return [profile.location_lat, profile.location_lng];
     }
-    return [40.7128, -74.006];
+    return [40.7128, -74.006]; // NYC fallback
   }, [profile?.location_lat, profile?.location_lng]);
+
+  // Geolocation effect
+  useEffect(() => {
+    // Only attempt geolocation once per user
+    if (geoLocationAttemptedRef.current || !user) {
+      setGeolocating(false);
+      return;
+    }
+    
+    geoLocationAttemptedRef.current = true;
+
+    if (!('geolocation' in navigator)) {
+      console.log('Geolocation not supported');
+      setGeolocating(false);
+      setGeoError('Geolocation not supported in your browser');
+      return;
+    }
+
+    // Get user's current position
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+
+          // Get location name from coordinates using reverse geocoding
+          let locationName = 'Your location';
+          try {
+            const geoResponse = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+              { headers: { 'Accept-Language': 'en' } }
+            );
+            const geoData = await geoResponse.json();
+            locationName = 
+              geoData.address?.city || 
+              geoData.address?.town || 
+              geoData.address?.county || 
+              geoData.address?.state ||
+              'Your location';
+          } catch (geoError) {
+            console.warn('Could not get location name:', geoError);
+          }
+
+          // Update profile with actual location
+          try {
+            const { error } = await supabase
+              .from('profiles')
+              .update({
+                location_lat: latitude,
+                location_lng: longitude,
+                location_name: locationName,
+              })
+              .eq('user_id', user.id);
+            
+            if (error) {
+              console.error('Error updating location:', error);
+              setGeoError('Could not save location to profile');
+            } else {
+              console.log('Location updated successfully');
+            }
+          } catch (updateError) {
+            console.error('Error updating profile:', updateError);
+            setGeoError('Could not save location');
+          }
+        } catch (error) {
+          console.error('Error processing geolocation:', error);
+          setGeoError('Error processing location');
+        } finally {
+          setGeolocating(false);
+        }
+      },
+      (error) => {
+        // Handle geolocation errors
+        let errorMessage = 'Could not access location';
+        
+        if (error.code === error.PERMISSION_DENIED) {
+          errorMessage = 'Location access denied. Please enable location in settings.';
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMessage = 'Location information not available';
+        } else if (error.code === error.TIMEOUT) {
+          errorMessage = 'Location request timed out';
+        }
+        
+        console.log('Geolocation error:', errorMessage);
+        setGeoError(errorMessage);
+        setGeolocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  }, [user]);
 
   // Filter tasks by radius
   const filteredTasks = useMemo(() => {
@@ -150,7 +247,7 @@ export function TaskMapView({ onViewTask }: TaskMapViewProps) {
     } catch (e) {
       console.error('Error initializing map:', e);
     }
-  }, []);
+  }, [userLocation]);
 
   // Update markers when tasks change
   useEffect(() => {
@@ -237,6 +334,25 @@ export function TaskMapView({ onViewTask }: TaskMapViewProps) {
     <div className="relative h-[calc(100vh-300px)] min-h-[500px] rounded-xl overflow-hidden border shadow-lg">
       {/* Map controls overlay */}
       <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col sm:flex-row gap-3 pointer-events-none">
+        {/* Geolocation status */}
+        {geolocating && (
+          <Card className="pointer-events-auto shadow-lg bg-info/10 border-info/20">
+            <CardContent className="p-3 flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-info" />
+              <span className="text-sm font-medium text-info">Detecting your location...</span>
+            </CardContent>
+          </Card>
+        )}
+
+        {geoError && (
+          <Card className="pointer-events-auto shadow-lg bg-warning/10 border-warning/20">
+            <CardContent className="p-3 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-warning" />
+              <span className="text-sm text-warning">{geoError}</span>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Radius filter */}
         <Card className="pointer-events-auto shadow-lg">
           <CardContent className="p-4">
