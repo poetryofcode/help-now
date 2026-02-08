@@ -75,7 +75,20 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      
+      // Try to use a format ElevenLabs can reliably process
+      // Priority: webm with opus > mp4 > webm default
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        mimeType = 'audio/ogg;codecs=opus';
+      }
+      
+      console.log('Using audio mimeType:', mimeType);
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       
       audioChunksRef.current = [];
       
@@ -87,11 +100,12 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
       
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(track => track.stop());
-        await processRecording();
+        await processRecording(mimeType);
       };
       
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
+      // Collect data every second to ensure we get chunks
+      mediaRecorder.start(1000);
       setIsRecording(true);
     } catch (error) {
       console.error('Error accessing microphone:', error);
@@ -110,16 +124,26 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
     }
   };
 
-  const processRecording = async () => {
+  const processRecording = async (mimeType: string) => {
     setStep('processing');
     setProcessingMessage('Converting speech to text...');
     
     try {
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+      
+      // Validate we have actual audio data
+      if (audioBlob.size < 1000) {
+        throw new Error('Recording too short. Please speak for at least 1 second.');
+      }
+      
+      console.log('Audio blob size:', audioBlob.size, 'type:', mimeType);
+      
+      // Determine file extension from mimeType
+      const extension = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm';
       
       // Step 1: Send to ElevenLabs for transcription
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
+      formData.append('audio', audioBlob, `recording.${extension}`);
       
       const transcribeResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-to-text`,
