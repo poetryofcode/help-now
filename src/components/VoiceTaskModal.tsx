@@ -128,9 +128,10 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
         }
       );
       
-      if (!transcribeResponse.ok) {
-        throw new Error('Failed to transcribe audio');
-      }
+       if (!transcribeResponse.ok) {
+         const errText = await transcribeResponse.text().catch(() => '');
+         throw new Error(errText || `Failed to transcribe audio (${transcribeResponse.status})`);
+       }
       
       const transcription = await transcribeResponse.json();
       const transcribedText = transcription.text;
