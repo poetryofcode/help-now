@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, SlidersHorizontal, Radio, MapPin, Clock, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -6,18 +6,24 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TaskCard } from './TaskCard';
+import { TaskDetailModal } from './TaskDetailModal';
 import { Task, TaskUrgency, TimeNeeded, TIME_LABELS } from '@/types/database';
 import { useTasks } from '@/hooks/useTasks';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TaskFeedProps {
   onViewTask?: (task: Task) => void;
 }
 
+interface UserVolunteerStatus {
+  [taskId: string]: 'pending' | 'accepted' | 'rejected' | null;
+}
+
 export function TaskFeed({ onViewTask }: TaskFeedProps) {
-  const { tasks, loading, acceptTask } = useTasks();
+  const { tasks, loading } = useTasks();
   const { user, profile } = useAuth();
   const { toast } = useToast();
   
@@ -26,6 +32,57 @@ export function TaskFeed({ onViewTask }: TaskFeedProps) {
   const [timeFilter, setTimeFilter] = useState<TimeNeeded | 'all'>('all');
   const [distanceFilter, setDistanceFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [userVolunteerStatuses, setUserVolunteerStatuses] = useState<UserVolunteerStatus>({});
+
+  // Fetch user's volunteer status for all tasks
+  useEffect(() => {
+    const fetchUserVolunteerStatuses = async () => {
+      if (!user) {
+        setUserVolunteerStatuses({});
+        return;
+      }
+
+      const { data } = await supabase
+        .from('task_volunteers')
+        .select('task_id, status')
+        .eq('volunteer_id', user.id);
+
+      if (data) {
+        const statuses: UserVolunteerStatus = {};
+        data.forEach(v => {
+          statuses[v.task_id] = v.status as 'pending' | 'accepted' | 'rejected';
+        });
+        setUserVolunteerStatuses(statuses);
+      }
+    };
+
+    fetchUserVolunteerStatuses();
+
+    // Subscribe to changes
+    if (user) {
+      const channel = supabase
+        .channel(`user-volunteer-status-${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'task_volunteers',
+            filter: `volunteer_id=eq.${user.id}`,
+          },
+          () => {
+            fetchUserVolunteerStatuses();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user]);
 
   // Filter and sort tasks
   const filteredTasks = useMemo(() => {
@@ -111,30 +168,10 @@ export function TaskFeed({ onViewTask }: TaskFeedProps) {
     return bestScore > 0 ? bestTask?.id : null;
   }, [filteredTasks, profile?.skills]);
 
-  const handleAcceptTask = async (task: Task) => {
-    if (!user) {
-      toast({
-        title: 'Sign in required',
-        description: 'Please sign in to accept tasks.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const { error } = await acceptTask(task.id);
-    
-    if (error) {
-      toast({
-        title: 'Failed to accept task',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } else {
-      toast({
-        title: 'Task accepted!',
-        description: 'Check your profile for task details.',
-      });
-    }
+  const handleViewTask = (task: Task) => {
+    setSelectedTask(task);
+    setDetailModalOpen(true);
+    onViewTask?.(task);
   };
 
   return (
@@ -279,13 +316,21 @@ export function TaskFeed({ onViewTask }: TaskFeedProps) {
               key={task.id}
               task={task}
               isBestMatch={task.id === bestMatchId}
-              onAccept={handleAcceptTask}
-              onView={onViewTask}
+              onOfferHelp={handleViewTask}
+              onView={handleViewTask}
+              userStatus={userVolunteerStatuses[task.id]}
               delay={index}
             />
           ))
         )}
       </div>
+
+      {/* Task Detail Modal */}
+      <TaskDetailModal
+        task={selectedTask}
+        open={detailModalOpen}
+        onOpenChange={setDetailModalOpen}
+      />
     </div>
   );
 }
