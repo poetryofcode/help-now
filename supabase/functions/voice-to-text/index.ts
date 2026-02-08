@@ -43,7 +43,12 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('ElevenLabs API error:', response.status, errorText);
-      throw new Error(`ElevenLabs API error: ${response.status}`);
+
+      // Return the upstream status + details so the client can display the real issue
+      return new Response(
+        JSON.stringify({ error: `ElevenLabs API error: ${response.status} ${errorText}` }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const transcription = await response.json();
