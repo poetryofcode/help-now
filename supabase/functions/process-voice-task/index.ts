@@ -126,20 +126,28 @@ serve(async (req) => {
 
     // If location was extracted, geocode it
     if (taskData.location) {
+      console.log('Attempting to geocode:', taskData.location);
       try {
         const geoResponse = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(taskData.location)}&limit=1`,
           { headers: { 'User-Agent': 'HelpNow/1.0' } }
         );
         const geoData = await geoResponse.json();
+        console.log('Geocoding result:', JSON.stringify(geoData));
+        
         if (geoData && geoData.length > 0) {
           taskData.location_name = geoData[0].display_name;
           taskData.location_lat = parseFloat(geoData[0].lat);
           taskData.location_lng = parseFloat(geoData[0].lon);
+          console.log('Geocoded successfully:', taskData.location_name, taskData.location_lat, taskData.location_lng);
+        } else {
+          // No geocoding results - keep raw location for user to refine
+          console.log('No geocoding results, keeping raw location');
+          taskData.location_raw = taskData.location;
         }
       } catch (geoError) {
         console.error('Geocoding failed:', geoError);
-        // Keep the raw location string, user can refine manually
+        taskData.location_raw = taskData.location;
       }
     }
 
