@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Clock, Zap, Sparkles, Loader2 } from 'lucide-react';
+import { Clock, Zap, Sparkles, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { LocationPicker } from '@/components/LocationPicker';
 import { TaskUrgency, TimeNeeded, TIME_LABELS, URGENCY_LABELS, SKILL_OPTIONS } from '@/types/database';
 import { useTasks } from '@/hooks/useTasks';
 import { useToast } from '@/hooks/use-toast';
@@ -24,13 +25,17 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [locationName, setLocationName] = useState('');
+  const [location, setLocation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [timeNeeded, setTimeNeeded] = useState<TimeNeeded>('30min');
   const [urgency, setUrgency] = useState<TaskUrgency>('medium');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+
+  const handleLocationChange = (name: string, lat: number, lng: number) => {
+    setLocation({ name, lat, lng });
+  };
 
   const handleSkillToggle = (skill: string) => {
     setSelectedSkills(prev =>
@@ -69,7 +74,7 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!title.trim() || !locationName.trim()) {
+    if (!title.trim() || !location) {
       toast({
         title: 'Missing information',
         description: 'Please fill in the title and location.',
@@ -80,16 +85,12 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
 
     setIsSubmitting(true);
 
-    // Mock coordinates for now - in production, use geocoding
-    const mockLat = 37.7749 + (Math.random() - 0.5) * 0.1;
-    const mockLng = -122.4194 + (Math.random() - 0.5) * 0.1;
-
     const { error } = await createTask({
       title: aiSuggestion || title,
       description: description || undefined,
-      location_lat: mockLat,
-      location_lng: mockLng,
-      location_name: locationName,
+      location_lat: location.lat,
+      location_lng: location.lng,
+      location_name: location.name,
       time_needed: timeNeeded,
       urgency,
       skills_needed: selectedSkills,
@@ -112,7 +113,7 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
       // Reset form
       setTitle('');
       setDescription('');
-      setLocationName('');
+      setLocation(null);
       setTimeNeeded('30min');
       setUrgency('medium');
       setSelectedSkills([]);
@@ -204,17 +205,12 @@ export function CreateTaskModal({ open, onOpenChange }: CreateTaskModalProps) {
 
           {/* Location */}
           <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                id="location"
-                placeholder="Enter address or neighborhood"
-                value={locationName}
-                onChange={(e) => setLocationName(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            <Label>Location</Label>
+            <LocationPicker
+              value={location?.name || ''}
+              onChange={handleLocationChange}
+              placeholder="Enter address or detect location"
+            />
           </div>
 
           {/* Time & Urgency */}
