@@ -1,12 +1,13 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Loader2, Check, ArrowLeft, Sparkles, MapPin, Clock, Zap } from 'lucide-react';
+import { Mic, MicOff, Loader2, Check, ArrowLeft, Sparkles, Clock, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { LocationPicker } from '@/components/LocationPicker';
 import { TaskUrgency, TimeNeeded, TIME_LABELS, URGENCY_LABELS } from '@/types/database';
 import { useTasks } from '@/hooks/useTasks';
 import { useToast } from '@/hooks/use-toast';
@@ -25,6 +26,12 @@ interface ProcessedTask {
   time_needed: TimeNeeded;
 }
 
+interface LocationData {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
   const { createTask } = useTasks();
   const { toast } = useToast();
@@ -33,18 +40,22 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
   const [processedTask, setProcessedTask] = useState<ProcessedTask | null>(null);
-  const [locationName, setLocationName] = useState('');
+  const [location, setLocation] = useState<LocationData | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  const handleLocationChange = (name: string, lat: number, lng: number) => {
+    setLocation({ name, lat, lng });
+  };
 
   const resetModal = () => {
     setStep('record');
     setIsRecording(false);
     setProcessingMessage('');
     setProcessedTask(null);
-    setLocationName('');
+    setLocation(null);
     setIsSubmitting(false);
     audioChunksRef.current = [];
   };
@@ -168,10 +179,10 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
   };
 
   const handleSubmit = async () => {
-    if (!processedTask || !locationName.trim()) {
+    if (!processedTask || !location) {
       toast({
         title: 'Missing location',
-        description: 'Please enter a location for your task.',
+        description: 'Please enter or detect a location for your task.',
         variant: 'destructive',
       });
       return;
@@ -179,16 +190,12 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
 
     setIsSubmitting(true);
 
-    // Mock coordinates - in production, use geocoding
-    const mockLat = 40.5749 + (Math.random() - 0.5) * 0.02;
-    const mockLng = -73.9594 + (Math.random() - 0.5) * 0.02;
-
     const { error } = await createTask({
       title: processedTask.title,
       description: processedTask.description,
-      location_lat: mockLat,
-      location_lng: mockLng,
-      location_name: locationName,
+      location_lat: location.lat,
+      location_lng: location.lng,
+      location_name: location.name,
       time_needed: processedTask.time_needed,
       urgency: processedTask.urgency,
       skills_needed: [],
@@ -332,17 +339,12 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="voice-location">Location</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="voice-location"
-                      placeholder="Enter your address"
-                      value={locationName}
-                      onChange={(e) => setLocationName(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
+                  <Label>Location</Label>
+                  <LocationPicker
+                    value={location?.name || ''}
+                    onChange={handleLocationChange}
+                    placeholder="Enter address or detect location"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -395,7 +397,7 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
                 <Button
                   variant="hero"
                   onClick={handleSubmit}
-                  disabled={isSubmitting || !locationName.trim()}
+                  disabled={isSubmitting || !location}
                   className="flex-1"
                 >
                   {isSubmitting ? (
