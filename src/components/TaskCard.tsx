@@ -1,19 +1,33 @@
 import { motion } from 'framer-motion';
-import { MapPin, Clock, Users, Zap, ChevronRight } from 'lucide-react';
+import { MapPin, Clock, Users, Zap, ChevronRight, UserPlus, Loader2 } from 'lucide-react';
 import { Task, TIME_LABELS, URGENCY_LABELS } from '@/types/database';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 interface TaskCardProps {
   task: Task;
-  onAccept?: (task: Task) => void;
+  onOfferHelp?: (task: Task) => void;
   onView?: (task: Task) => void;
   isBestMatch?: boolean;
   delay?: number;
+  isOffering?: boolean;
+  userStatus?: 'pending' | 'accepted' | 'rejected' | null;
 }
 
-export function TaskCard({ task, onAccept, onView, isBestMatch, delay = 0 }: TaskCardProps) {
+export function TaskCard({ 
+  task, 
+  onOfferHelp, 
+  onView, 
+  isBestMatch, 
+  delay = 0,
+  isOffering = false,
+  userStatus = null,
+}: TaskCardProps) {
+  const { user } = useAuth();
+  const isCreator = task.creator_id === user?.id;
+
   const urgencyClasses = {
     low: 'urgency-low',
     medium: 'urgency-medium',
@@ -25,6 +39,27 @@ export function TaskCard({ task, onAccept, onView, isBestMatch, delay = 0 }: Tas
     medium: 'bg-warning/5 border-warning/20',
     high: 'bg-destructive/5 border-destructive/20',
   };
+
+  const getButtonContent = () => {
+    if (isCreator) {
+      return { text: 'Manage Task', disabled: false };
+    }
+    if (userStatus === 'pending') {
+      return { text: 'Offer Pending', disabled: true };
+    }
+    if (userStatus === 'accepted') {
+      return { text: 'You\'re Helping!', disabled: true };
+    }
+    if (task.status === 'in_progress') {
+      return { text: 'In Progress', disabled: true };
+    }
+    if (task.current_volunteers >= task.max_volunteers) {
+      return { text: 'Full', disabled: true };
+    }
+    return { text: 'Offer to Help', disabled: false };
+  };
+
+  const buttonState = getButtonContent();
 
   return (
     <motion.div
@@ -111,12 +146,24 @@ export function TaskCard({ task, onAccept, onView, isBestMatch, delay = 0 }: Tas
         {/* Actions */}
         <div className="flex items-center gap-2 pt-2 border-t border-border/50">
           <Button
-            onClick={() => onAccept?.(task)}
+            onClick={() => onOfferHelp?.(task)}
             size="sm"
-            className="flex-1"
-            disabled={task.status !== 'open' || task.current_volunteers >= task.max_volunteers}
+            className={cn(
+              "flex-1",
+              userStatus === 'pending' && "bg-warning/10 text-warning border-warning/30 hover:bg-warning/20",
+              userStatus === 'accepted' && "bg-success/10 text-success border-success/30 hover:bg-success/20"
+            )}
+            variant={userStatus ? "outline" : "default"}
+            disabled={buttonState.disabled || isOffering}
           >
-            {task.status === 'in_progress' ? 'In Progress' : 'Accept Task'}
+            {isOffering ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                {!userStatus && !isCreator && <UserPlus className="w-4 h-4 mr-1" />}
+                {buttonState.text}
+              </>
+            )}
           </Button>
           <Button
             onClick={() => onView?.(task)}
