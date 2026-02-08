@@ -1,6 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
-import { Icon, DivIcon, LatLngBounds } from 'leaflet';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import L, { Icon, DivIcon, LatLngBounds, Map as LeafletMap } from 'leaflet';
 import { motion } from 'framer-motion';
 import { MapPin, Clock, Users, Zap, Navigation, Minus, Plus } from 'lucide-react';
 import { Task, TIME_LABELS, URGENCY_LABELS } from '@/types/database';
@@ -19,7 +18,6 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-// Fix default icon
 delete (Icon.Default.prototype as any)._getIconUrl;
 Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
@@ -40,13 +38,12 @@ const createUrgencyIcon = (urgency: 'low' | 'medium' | 'high', isBestMatch: bool
   };
   
   const color = colors[urgency];
-  const ringClass = isBestMatch ? 'ring-2 ring-primary ring-offset-2' : '';
   
   return new DivIcon({
     className: 'custom-marker',
     html: `
-      <div class="relative flex items-center justify-center ${ringClass}" style="width: 32px; height: 32px;">
-        <div class="absolute inset-0 rounded-full animate-ping opacity-20" style="background-color: ${color};"></div>
+      <div class="relative flex items-center justify-center" style="width: 32px; height: 32px;">
+        <div class="absolute inset-0 rounded-full animate-ping opacity-20" style="background-color: ${color}; width: 32px; height: 32px;"></div>
         <div class="relative w-8 h-8 rounded-full shadow-lg flex items-center justify-center" style="background-color: ${color};">
           <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
@@ -65,53 +62,32 @@ const userLocationIcon = new DivIcon({
   className: 'user-location-marker',
   html: `
     <div class="relative flex items-center justify-center" style="width: 24px; height: 24px;">
-      <div class="absolute inset-0 rounded-full bg-primary/30 animate-ping"></div>
-      <div class="relative w-4 h-4 rounded-full bg-primary border-2 border-white shadow-lg"></div>
+      <div class="absolute inset-0 rounded-full bg-blue-500/30 animate-ping" style="width: 24px; height: 24px;"></div>
+      <div class="relative w-4 h-4 rounded-full bg-blue-600 border-2 border-white shadow-lg"></div>
     </div>
   `,
   iconSize: [24, 24],
   iconAnchor: [12, 12],
 });
 
-// Component to fit bounds
-function FitBounds({ bounds }: { bounds: LatLngBounds | null }) {
-  const map = useMap();
-  
-  useEffect(() => {
-    if (bounds && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-    }
-  }, [bounds, map]);
-  
-  return null;
-}
-
-// Component to update map center
-function MapCenter({ center }: { center: [number, number] }) {
-  const map = useMap();
-  
-  useEffect(() => {
-    map.setView(center, map.getZoom());
-  }, [center, map]);
-  
-  return null;
-}
-
 export function TaskMapView({ onViewTask }: TaskMapViewProps) {
   const { tasks, loading, acceptTask } = useTasks();
   const { profile } = useAuth();
   const { toast } = useToast();
   
-  const [radiusFilter, setRadiusFilter] = useState<number>(25); // miles
+  const mapRef = useRef<LeafletMap | null>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+  
+  const [radiusFilter, setRadiusFilter] = useState<number>(25);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showRadius, setShowRadius] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
   
-  // Default center (fallback to NYC if no user location)
   const userLocation: [number, number] = useMemo(() => {
     if (profile?.location_lat && profile?.location_lng) {
       return [profile.location_lat, profile.location_lng];
     }
-    return [40.7128, -74.006]; // NYC default
+    return [40.7128, -74.006];
   }, [profile?.location_lat, profile?.location_lng]);
 
   // Filter tasks by radius
@@ -149,19 +125,95 @@ export function TaskMapView({ onViewTask }: TaskMapViewProps) {
     return bestScore > 0 ? bestTask?.id : null;
   }, [filteredTasks, profile?.skills]);
 
-  // Calculate bounds for all tasks
-  const bounds = useMemo(() => {
-    if (filteredTasks.length === 0) return null;
-    
-    const latLngs = filteredTasks.map(t => [t.location_lat, t.location_lng] as [number, number]);
-    if (profile?.location_lat && profile?.location_lng) {
-      latLngs.push([profile.location_lat, profile.location_lng]);
+  // Initialize map
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const container = document.getElementById('task-map');
+    if (!container) return;
+
+    try {
+      const map = L.map(container).setView(userLocation, 12);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      mapRef.current = map;
+      setMapReady(true);
+
+      return () => {
+        map.remove();
+        mapRef.current = null;
+      };
+    } catch (e) {
+      console.error('Error initializing map:', e);
     }
-    
-    if (latLngs.length === 0) return null;
-    
-    return new LatLngBounds(latLngs);
-  }, [filteredTasks, profile?.location_lat, profile?.location_lng]);
+  }, []);
+
+  // Update markers when tasks change
+  useEffect(() => {
+    if (!mapRef.current || !mapReady) return;
+
+    // Clear existing markers
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+
+    // Add user location marker
+    if (profile?.location_lat && profile?.location_lng) {
+      const userMarker = L.marker([profile.location_lat, profile.location_lng], {
+        icon: userLocationIcon,
+      })
+        .bindPopup(`<strong>Your location</strong><br>${profile.location_name}`)
+        .addTo(mapRef.current);
+      markersRef.current.push(userMarker);
+
+      // Add radius circle
+      if (showRadius) {
+        L.circle([profile.location_lat, profile.location_lng], {
+          radius: radiusFilter * 1609.34,
+          color: 'rgb(var(--primary))',
+          fillColor: 'rgb(var(--primary))',
+          fillOpacity: 0.1,
+          weight: 2,
+          dashArray: '5, 10',
+        }).addTo(mapRef.current);
+      }
+    }
+
+    // Add task markers
+    const bounds = L.latLngBounds([]);
+
+    filteredTasks.forEach(task => {
+      const marker = L.marker([task.location_lat, task.location_lng], {
+        icon: createUrgencyIcon(task.urgency, task.id === bestMatchId),
+      })
+        .bindPopup(
+          `<strong>${task.ai_improved_title || task.title}</strong><br>` +
+          `${task.distance !== undefined ? `${task.distance.toFixed(1)} mi away` : task.location_name}<br>` +
+          `${TIME_LABELS[task.time_needed]}`
+        )
+        .addTo(mapRef.current)
+        .on('click', () => setSelectedTask(task));
+
+      markersRef.current.push(marker);
+      bounds.extend([task.location_lat, task.location_lng]);
+    });
+
+    // Fit bounds
+    if (profile?.location_lat && profile?.location_lng) {
+      bounds.extend([profile.location_lat, profile.location_lng]);
+    }
+
+    if (bounds.isValid()) {
+      try {
+        mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+      } catch (e) {
+        console.error('Error fitting bounds:', e);
+      }
+    }
+  }, [filteredTasks, mapReady, bestMatchId, radiusFilter, showRadius, profile]);
 
   const handleAcceptTask = async (task: Task) => {
     const { error } = await acceptTask(task.id);
@@ -180,9 +232,6 @@ export function TaskMapView({ onViewTask }: TaskMapViewProps) {
       setSelectedTask(null);
     }
   };
-
-  // Miles to meters for circle radius
-  const radiusInMeters = radiusFilter * 1609.34;
 
   return (
     <div className="relative h-[calc(100vh-300px)] min-h-[500px] rounded-xl overflow-hidden border shadow-lg">
@@ -337,77 +386,8 @@ export function TaskMapView({ onViewTask }: TaskMapViewProps) {
         </motion.div>
       )}
 
-      {/* Map */}
-      <MapContainer
-        center={userLocation}
-        zoom={12}
-        className="h-full w-full"
-        style={{ background: 'hsl(var(--muted))' }}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        
-        {bounds && <FitBounds bounds={bounds} />}
-        
-        {/* User location marker */}
-        {profile?.location_lat && profile?.location_lng && (
-          <>
-            <Marker 
-              position={[profile.location_lat, profile.location_lng]} 
-              icon={userLocationIcon}
-            >
-              <Popup>
-                <div className="text-center">
-                  <strong>Your location</strong>
-                  <p className="text-sm text-muted-foreground">{profile.location_name}</p>
-                </div>
-              </Popup>
-            </Marker>
-            
-            {/* Radius circle */}
-            {showRadius && (
-              <Circle
-                center={[profile.location_lat, profile.location_lng]}
-                radius={radiusInMeters}
-                pathOptions={{
-                  color: 'hsl(var(--primary))',
-                  fillColor: 'hsl(var(--primary))',
-                  fillOpacity: 0.1,
-                  weight: 2,
-                  dashArray: '5, 10',
-                }}
-              />
-            )}
-          </>
-        )}
-        
-        {/* Task markers */}
-        {filteredTasks.map((task) => (
-          <Marker
-            key={task.id}
-            position={[task.location_lat, task.location_lng]}
-            icon={createUrgencyIcon(task.urgency, task.id === bestMatchId)}
-            eventHandlers={{
-              click: () => setSelectedTask(task),
-            }}
-          >
-            <Popup>
-              <div className="min-w-[200px]">
-                <h4 className="font-semibold mb-1">{task.ai_improved_title || task.title}</h4>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {task.distance !== undefined && (
-                    <span>{task.distance.toFixed(1)} mi away</span>
-                  )}
-                  <span>•</span>
-                  <span>{TIME_LABELS[task.time_needed]}</span>
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
+      {/* Map container */}
+      <div id="task-map" className="h-full w-full" style={{ background: 'hsl(var(--muted))' }} />
 
       {/* Loading overlay */}
       {loading && (
