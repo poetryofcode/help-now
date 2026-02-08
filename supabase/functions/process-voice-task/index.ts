@@ -42,6 +42,7 @@ serve(async (req) => {
             2. A helpful description (1-2 sentences)
             3. Urgency level: "low" (can wait), "medium" (today/tomorrow), or "high" (urgent/ASAP)
             4. Estimated time: "15min", "30min", "1hour", "2hours", or "half_day"
+            5. Location: If the user mentions any place, address, neighborhood, landmark, or city, extract it. Examples: "at my house on 123 Main St", "near Central Park", "downtown Seattle", "at the grocery store". Return null if no location is mentioned.
             
             Respond ONLY with a valid JSON object, no markdown, no explanation.`
           },
@@ -76,9 +77,14 @@ serve(async (req) => {
                     type: 'string', 
                     enum: ['15min', '30min', '1hour', '2hours', 'half_day'],
                     description: 'Estimated time to complete the task'
+                  },
+                  location: { 
+                    type: 'string', 
+                    nullable: true,
+                    description: 'Location mentioned in the request (address, place name, landmark, neighborhood). Null if not mentioned.'
                   }
                 },
-                required: ['title', 'description', 'urgency', 'time_needed'],
+                required: ['title', 'description', 'urgency', 'time_needed', 'location'],
                 additionalProperties: false
               }
             }
@@ -117,6 +123,25 @@ serve(async (req) => {
 
     const taskData = JSON.parse(toolCall.function.arguments);
     console.log('Extracted task data:', taskData);
+
+    // If location was extracted, geocode it
+    if (taskData.location) {
+      try {
+        const geoResponse = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(taskData.location)}&limit=1`,
+          { headers: { 'User-Agent': 'HelpNow/1.0' } }
+        );
+        const geoData = await geoResponse.json();
+        if (geoData && geoData.length > 0) {
+          taskData.location_name = geoData[0].display_name;
+          taskData.location_lat = parseFloat(geoData[0].lat);
+          taskData.location_lng = parseFloat(geoData[0].lon);
+        }
+      } catch (geoError) {
+        console.error('Geocoding failed:', geoError);
+        // Keep the raw location string, user can refine manually
+      }
+    }
 
     return new Response(JSON.stringify(taskData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
