@@ -69,15 +69,8 @@ export function ProfileCard({ onEditProfile }: ProfileCardProps) {
             )}
           </div>
 
-           {/* Stats */}
-          <div className="grid grid-cols-4 gap-3 mb-6">
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary mx-auto mb-2">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <p className="text-2xl font-bold">{profile.tasks_completed || 0}</p>
-              <p className="text-xs text-muted-foreground">Tasks Done</p>
-            </div>
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
             <div className="text-center p-3 rounded-lg bg-muted/50">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-success/10 text-success mx-auto mb-2">
                 <Clock className="w-4 h-4" />
