@@ -176,6 +176,10 @@ export function useTasks() {
   };
 
   const completeTask = async (taskId: string) => {
+    // First, get the task details and accepted volunteers
+    const task = tasks.find(t => t.id === taskId);
+    
+    // Update task status
     const { error } = await supabase
       .from('tasks')
       .update({
@@ -184,11 +188,51 @@ export function useTasks() {
       })
       .eq('id', taskId);
 
-    if (!error) {
-      fetchTasks();
+    if (error) {
+      return { error };
     }
 
-    return { error };
+    // Get accepted volunteers for this task
+    const { data: volunteers } = await supabase
+      .from('task_volunteers')
+      .select('volunteer_id')
+      .eq('task_id', taskId)
+      .eq('status', 'accepted');
+
+    if (volunteers && volunteers.length > 0) {
+      // Calculate hours based on time_needed
+      const hoursMap: Record<string, number> = {
+        '15min': 0.25,
+        '30min': 0.5,
+        '1hour': 1,
+        '2hours': 2,
+        'half_day': 4,
+      };
+      const hours = task ? hoursMap[task.time_needed] || 0.5 : 0.5;
+
+      // Update each volunteer's profile stats
+      for (const volunteer of volunteers) {
+        // Get current profile stats
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tasks_completed, total_volunteer_hours')
+          .eq('user_id', volunteer.volunteer_id)
+          .maybeSingle();
+
+        if (profile) {
+          await supabase
+            .from('profiles')
+            .update({
+              tasks_completed: (profile.tasks_completed || 0) + 1,
+              total_volunteer_hours: (profile.total_volunteer_hours || 0) + hours,
+            })
+            .eq('user_id', volunteer.volunteer_id);
+        }
+      }
+    }
+
+    fetchTasks();
+    return { error: null };
   };
 
   return {
