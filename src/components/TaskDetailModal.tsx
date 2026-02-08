@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MapPin, Clock, Users, Zap, Check, X, 
-  Loader2, UserPlus, UserCheck, UserX, MessageCircle 
+  Loader2, UserPlus, UserCheck, UserX, MessageCircle, CheckCircle2, Star
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -13,9 +13,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Task, TIME_LABELS, URGENCY_LABELS } from '@/types/database';
 import { useTaskVolunteers, VolunteerWithProfile } from '@/hooks/useTaskVolunteers';
+import { useTasks } from '@/hooks/useTasks';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { TaskChat } from './TaskChat';
+import { FeedbackModal } from './FeedbackModal';
 import { cn } from '@/lib/utils';
 
 interface TaskDetailModalProps {
@@ -27,8 +29,11 @@ interface TaskDetailModalProps {
 export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { completeTask } = useTasks();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const {
     volunteers,
@@ -111,6 +116,47 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
       });
     }
   };
+
+  const handleMarkComplete = async () => {
+    if (!task) return;
+    setIsCompleting(true);
+
+    const { error } = await completeTask(task.id);
+
+    setIsCompleting(false);
+
+    if (error) {
+      toast({
+        title: 'Failed to complete task',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Task completed!',
+        description: 'Please leave feedback for your helpers.',
+      });
+      setShowFeedback(true);
+    }
+  };
+
+  // Get accepted volunteers for feedback
+  const acceptedVolunteers = volunteers.filter((v) => v.status === 'accepted');
+  const feedbackRecipients = isCreator
+    ? acceptedVolunteers.map((v) => ({
+        id: v.volunteer_id,
+        name: v.profile?.full_name || 'Volunteer',
+        avatar_url: v.profile?.avatar_url,
+      }))
+    : task?.creator
+    ? [
+        {
+          id: task.creator_id,
+          name: task.creator.full_name || 'Task Creator',
+          avatar_url: task.creator.avatar_url,
+        },
+      ]
+    : [];
 
   if (!task) return null;
 
@@ -214,24 +260,57 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
             </Button>
           )}
 
-          {userVolunteerStatus === 'accepted' && (
-            <Button variant="outline" className="flex-1">
-              <MessageCircle className="w-4 h-4" />
-              Message
+          {userVolunteerStatus === 'accepted' && !isCreator && task.status === 'completed' && (
+            <Button
+              variant="hero"
+              className="flex-1"
+              onClick={() => setShowFeedback(true)}
+            >
+              <Star className="w-4 h-4" />
+              Leave Feedback
             </Button>
           )}
 
           {isCreator && task.status !== 'completed' && acceptedCount > 0 && (
-            <Button variant="hero" className="flex-1">
-              <Check className="w-4 h-4" />
-              Mark Complete
+            <Button
+              variant="hero"
+              className="flex-1"
+              onClick={handleMarkComplete}
+              disabled={isCompleting}
+            >
+              {isCompleting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  Mark Complete
+                </>
+              )}
             </Button>
+          )}
+
+          {task.status === 'completed' && (
+            <Badge variant="outline" className="text-success border-success/30 px-4 py-2">
+              <CheckCircle2 className="w-4 h-4 mr-1" />
+              Completed
+            </Badge>
           )}
 
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Close
           </Button>
         </div>
+
+        {/* Feedback Modal */}
+        {feedbackRecipients.length > 0 && (
+          <FeedbackModal
+            open={showFeedback}
+            onOpenChange={setShowFeedback}
+            taskId={task.id}
+            recipients={feedbackRecipients}
+            onComplete={() => onOpenChange(false)}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
