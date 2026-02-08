@@ -25,6 +25,7 @@ interface ProcessedTask {
   urgency: TaskUrgency;
   time_needed: TimeNeeded;
   location?: string | null;
+  location_raw?: string;
   location_name?: string;
   location_lat?: number;
   location_lng?: number;
@@ -178,6 +179,10 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
           lat: taskData.location_lat,
           lng: taskData.location_lng,
         });
+      } else if (taskData.location_raw || taskData.location) {
+        // Location was extracted but couldn't be geocoded - show hint to user
+        console.log('Location extracted but not geocoded:', taskData.location_raw || taskData.location);
+        // We'll show this in the UI so user knows to refine the location
       }
       
       setStep('review');
@@ -358,8 +363,17 @@ export function VoiceTaskModal({ open, onOpenChange }: VoiceTaskModalProps) {
                   <LocationPicker
                     value={location?.name || ''}
                     onChange={handleLocationChange}
-                    placeholder="Enter address or detect location"
+                    placeholder={
+                      !location && (processedTask.location_raw || processedTask.location)
+                        ? `Refine: "${processedTask.location_raw || processedTask.location}"`
+                        : "Enter address or detect location"
+                    }
                   />
+                  {!location && (processedTask.location_raw || processedTask.location) && (
+                    <p className="text-xs text-muted-foreground">
+                      You said "{processedTask.location_raw || processedTask.location}" — please search for a specific address
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
