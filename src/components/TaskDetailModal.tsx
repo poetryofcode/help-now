@@ -10,10 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Task, TIME_LABELS, URGENCY_LABELS } from '@/types/database';
 import { useTaskVolunteers, VolunteerWithProfile } from '@/hooks/useTaskVolunteers';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { TaskChat } from './TaskChat';
 import { cn } from '@/lib/utils';
 
 interface TaskDetailModalProps {
@@ -26,6 +28,7 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
   const { user } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
 
   const {
     volunteers,
@@ -127,119 +130,54 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
           <DialogDescription className="sr-only">Task details and volunteer management</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
-          <div className="space-y-5 pb-4">
-            {/* Status badges */}
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className={urgencyClasses[task.urgency]}>
-                {task.urgency === 'high' && <Zap className="w-3 h-3 mr-1" />}
-                {URGENCY_LABELS[task.urgency]} Priority
-              </Badge>
-              <Badge variant="outline">
-                <Clock className="w-3 h-3 mr-1" />
-                {TIME_LABELS[task.time_needed]}
-              </Badge>
-              <Badge variant="outline">
-                <Users className="w-3 h-3 mr-1" />
-                {acceptedCount}/{task.max_volunteers} helpers
-              </Badge>
-            </div>
+        {/* Show tabs only for participants (creator or accepted volunteer) */}
+        {(isCreator || userVolunteerStatus === 'accepted') ? (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="messages" className="flex items-center gap-1.5">
+                <MessageCircle className="w-4 h-4" />
+                Messages
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Description */}
-            {task.description && (
-              <p className="text-muted-foreground">{task.description}</p>
-            )}
+            <TabsContent value="details" className="flex-1 overflow-hidden mt-4">
+              <ScrollArea className="h-[350px] pr-4">
+                <TaskDetailsContent
+                  task={task}
+                  urgencyClasses={urgencyClasses}
+                  acceptedCount={acceptedCount}
+                  isCreator={isCreator}
+                  volunteers={volunteers}
+                  volunteersLoading={volunteersLoading}
+                  pendingCount={pendingCount}
+                  userVolunteerStatus={userVolunteerStatus}
+                  handleAcceptVolunteer={handleAcceptVolunteer}
+                  handleRejectVolunteer={handleRejectVolunteer}
+                />
+              </ScrollArea>
+            </TabsContent>
 
-            {/* Location */}
-            <div className="flex items-start gap-2 text-sm">
-              <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-              <span>{task.location_name}</span>
-            </div>
-
-            {/* Skills */}
-            {task.skills_needed && task.skills_needed.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-2">Skills needed:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {task.skills_needed.map((skill) => (
-                    <Badge key={skill} variant="secondary" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <Separator />
-
-            {/* Volunteer section for creator */}
-            {isCreator && (
-              <div>
-                <h3 className="font-medium mb-3 flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Volunteers
-                  {pendingCount > 0 && (
-                    <Badge variant="default" className="text-xs">
-                      {pendingCount} pending
-                    </Badge>
-                  )}
-                </h3>
-
-                {volunteersLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : volunteers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">
-                    No volunteers yet. Share this task to get help!
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {volunteers.map((volunteer) => (
-                      <VolunteerCard
-                        key={volunteer.id}
-                        volunteer={volunteer}
-                        onAccept={() => handleAcceptVolunteer(volunteer.volunteer_id)}
-                        onReject={() => handleRejectVolunteer(volunteer.volunteer_id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Volunteer status for non-creators */}
-            {!isCreator && userVolunteerStatus && (
-              <div className={cn(
-                "p-4 rounded-lg border",
-                userVolunteerStatus === 'pending' && "bg-warning/5 border-warning/30",
-                userVolunteerStatus === 'accepted' && "bg-success/5 border-success/30",
-                userVolunteerStatus === 'rejected' && "bg-destructive/5 border-destructive/30"
-              )}>
-                <div className="flex items-center gap-2">
-                  {userVolunteerStatus === 'pending' && (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-warning" />
-                      <span className="text-sm font-medium">Your offer is pending review</span>
-                    </>
-                  )}
-                  {userVolunteerStatus === 'accepted' && (
-                    <>
-                      <Check className="w-4 h-4 text-success" />
-                      <span className="text-sm font-medium">You're helping with this task!</span>
-                    </>
-                  )}
-                  {userVolunteerStatus === 'rejected' && (
-                    <>
-                      <X className="w-4 h-4 text-destructive" />
-                      <span className="text-sm font-medium">Your offer was not accepted</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </ScrollArea>
+            <TabsContent value="messages" className="flex-1 overflow-hidden mt-4">
+              <TaskChat taskId={task.id} creatorId={task.creator_id} />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <TaskDetailsContent
+              task={task}
+              urgencyClasses={urgencyClasses}
+              acceptedCount={acceptedCount}
+              isCreator={isCreator}
+              volunteers={volunteers}
+              volunteersLoading={volunteersLoading}
+              pendingCount={pendingCount}
+              userVolunteerStatus={userVolunteerStatus}
+              handleAcceptVolunteer={handleAcceptVolunteer}
+              handleRejectVolunteer={handleRejectVolunteer}
+            />
+          </ScrollArea>
+        )}
 
         {/* Actions */}
         <div className="pt-4 border-t flex gap-3">
@@ -361,5 +299,146 @@ function VolunteerCard({ volunteer, onAccept, onReject }: VolunteerCardProps) {
         </Badge>
       )}
     </motion.div>
+  );
+}
+
+// Extracted TaskDetailsContent component
+interface TaskDetailsContentProps {
+  task: Task;
+  urgencyClasses: Record<string, string>;
+  acceptedCount: number;
+  isCreator: boolean;
+  volunteers: VolunteerWithProfile[];
+  volunteersLoading: boolean;
+  pendingCount: number;
+  userVolunteerStatus: string | null;
+  handleAcceptVolunteer: (volunteerId: string) => Promise<void>;
+  handleRejectVolunteer: (volunteerId: string) => Promise<void>;
+}
+
+function TaskDetailsContent({
+  task,
+  urgencyClasses,
+  acceptedCount,
+  isCreator,
+  volunteers,
+  volunteersLoading,
+  pendingCount,
+  userVolunteerStatus,
+  handleAcceptVolunteer,
+  handleRejectVolunteer,
+}: TaskDetailsContentProps) {
+  return (
+    <div className="space-y-5 pb-4">
+      {/* Status badges */}
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline" className={urgencyClasses[task.urgency]}>
+          {task.urgency === 'high' && <Zap className="w-3 h-3 mr-1" />}
+          {URGENCY_LABELS[task.urgency]} Priority
+        </Badge>
+        <Badge variant="outline">
+          <Clock className="w-3 h-3 mr-1" />
+          {TIME_LABELS[task.time_needed]}
+        </Badge>
+        <Badge variant="outline">
+          <Users className="w-3 h-3 mr-1" />
+          {acceptedCount}/{task.max_volunteers} helpers
+        </Badge>
+      </div>
+
+      {/* Description */}
+      {task.description && (
+        <p className="text-muted-foreground">{task.description}</p>
+      )}
+
+      {/* Location */}
+      <div className="flex items-start gap-2 text-sm">
+        <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+        <span>{task.location_name}</span>
+      </div>
+
+      {/* Skills */}
+      {task.skills_needed && task.skills_needed.length > 0 && (
+        <div>
+          <p className="text-sm font-medium mb-2">Skills needed:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {task.skills_needed.map((skill) => (
+              <Badge key={skill} variant="secondary" className="text-xs">
+                {skill}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Separator />
+
+      {/* Volunteer section for creator */}
+      {isCreator && (
+        <div>
+          <h3 className="font-medium mb-3 flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            Volunteers
+            {pendingCount > 0 && (
+              <Badge variant="default" className="text-xs">
+                {pendingCount} pending
+              </Badge>
+            )}
+          </h3>
+
+          {volunteersLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : volunteers.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              No volunteers yet. Share this task to get help!
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {volunteers.map((volunteer) => (
+                <VolunteerCard
+                  key={volunteer.id}
+                  volunteer={volunteer}
+                  onAccept={() => handleAcceptVolunteer(volunteer.volunteer_id)}
+                  onReject={() => handleRejectVolunteer(volunteer.volunteer_id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Volunteer status for non-creators */}
+      {!isCreator && userVolunteerStatus && (
+        <div className={cn(
+          "p-4 rounded-lg border",
+          userVolunteerStatus === 'pending' && "bg-warning/5 border-warning/30",
+          userVolunteerStatus === 'accepted' && "bg-success/5 border-success/30",
+          userVolunteerStatus === 'rejected' && "bg-destructive/5 border-destructive/30"
+        )}>
+          <div className="flex items-center gap-2">
+            {userVolunteerStatus === 'pending' && (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-warning" />
+                <span className="text-sm font-medium">Your offer is pending review</span>
+              </>
+            )}
+            {userVolunteerStatus === 'accepted' && (
+              <>
+                <Check className="w-4 h-4 text-success" />
+                <span className="text-sm font-medium">You're helping with this task!</span>
+              </>
+            )}
+            {userVolunteerStatus === 'rejected' && (
+              <>
+                <X className="w-4 h-4 text-destructive" />
+                <span className="text-sm font-medium">Your offer was not accepted</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
