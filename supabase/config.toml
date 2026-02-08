@@ -1,1 +1,10 @@
 project_id = "hzxwifpuyfgptsduqkga"
+
+[functions.improve-task]
+verify_jwt = false
+
+[functions.voice-to-text]
+verify_jwt = false
+
+[functions.process-voice-task]
+verify_jwt = false

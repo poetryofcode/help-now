@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, List, Map } from 'lucide-react';
+import { Plus, List, Map, Mic } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { TaskFeed } from '@/components/TaskFeed';
 import { TaskMapView } from '@/components/TaskMapView';
 import { ProfileCard } from '@/components/ProfileCard';
 import { CreateTaskModal } from '@/components/CreateTaskModal';
+import { VoiceTaskModal } from '@/components/VoiceTaskModal';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,6 +16,7 @@ import { Task } from '@/types/database';
 export default function TasksPage() {
   const { user } = useAuth();
   const [showCreateTask, setShowCreateTask] = useState(false);
+  const [showVoiceTask, setShowVoiceTask] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
@@ -52,10 +54,20 @@ export default function TasksPage() {
                 </Tabs>
                 
                 {user && (
-                  <Button variant="hero" onClick={() => setShowCreateTask(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Post a Task
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="accent" 
+                      onClick={() => setShowVoiceTask(true)}
+                      className="gap-2"
+                    >
+                      <Mic className="w-4 h-4" />
+                      <span className="hidden sm:inline">Speak a Task</span>
+                    </Button>
+                    <Button variant="hero" onClick={() => setShowCreateTask(true)}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Post a Task
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -85,6 +97,7 @@ export default function TasksPage() {
 
       <Footer />
       <CreateTaskModal open={showCreateTask} onOpenChange={setShowCreateTask} />
+      <VoiceTaskModal open={showVoiceTask} onOpenChange={setShowVoiceTask} />
     </div>
   );
 }
